@@ -24,7 +24,7 @@ jobs:
         run: dotnet build MEMS.Api/MEMS.Api.csproj --configuration Release
 
       - name: Publish MEMS.Api
-        run: dotnet publish MEMS.Api/MEMS.Api.csproj -c Release -o ${{env.DOTNET_ROOT}}/myapp
+        run: dotnet publish MEMS.Api/MEMS.Api.csproj -c Release -o ./published
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
