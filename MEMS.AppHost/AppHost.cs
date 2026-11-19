@@ -1,7 +1,9 @@
+using Aspire.Hosting;
+
 var builder = DistributedApplication.CreateBuilder(args);
 
-var sql = builder.AddSqlServer("sql")
-                 .WithDataVolume();
+var sql = builder.AddAzureSqlServer("sql")
+                 .RunAsContainer(); // Runs in Docker locally, connects to Azure SQL in Azure
 var memsDb = sql.AddDatabase("memsdb");
 
 var api = builder.AddProject<Projects.MEMS_Api>("mems-api")
