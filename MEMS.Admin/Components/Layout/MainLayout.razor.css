@@ -2,39 +2,33 @@
     position: relative;
     display: flex;
     flex-direction: column;
+    min-height: 100vh;
 }
 
 main {
     flex: 1;
+    background-color: #f4f7fa;
 }
 
 .sidebar {
-    background-image: linear-gradient(180deg, rgb(5, 39, 103) 0%, #3a0647 70%);
+    background: linear-gradient(180deg, #0b1f3a 0%, #163a68 100%);
+    border-right: 3px solid #d97706;
 }
 
 .top-row {
-    background-color: #f7f7f7;
-    border-bottom: 1px solid #d6d5d5;
+    background-color: #ffffff;
+    border-bottom: 1px solid #e2e8f0;
     justify-content: flex-end;
     height: 3.5rem;
     display: flex;
     align-items: center;
 }
 
-    .top-row ::deep a, .top-row ::deep .btn-link {
-        white-space: nowrap;
-        margin-left: 1.5rem;
-        text-decoration: none;
-    }
-
-    .top-row ::deep a:hover, .top-row ::deep .btn-link:hover {
-        text-decoration: underline;
-    }
-
-    .top-row ::deep a:first-child {
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
+.top-row ::deep a, .top-row ::deep .btn-link {
+    white-space: nowrap;
+    margin-left: 1.5rem;
+    text-decoration: none;
+}
 
 @media (max-width: 640.98px) {
     .top-row {
@@ -61,18 +55,12 @@ main {
     .top-row {
         position: sticky;
         top: 0;
-        z-index: 1;
-    }
-
-    .top-row.auth ::deep a:first-child {
-        flex: 1;
-        text-align: right;
-        width: 0;
+        z-index: 10;
     }
 
     .top-row, article {
         padding-left: 2rem !important;
-        padding-right: 1.5rem !important;
+        padding-right: 2rem !important;
     }
 }
 
@@ -90,9 +78,9 @@ main {
     z-index: 1000;
 }
 
-    #blazor-error-ui .dismiss {
-        cursor: pointer;
-        position: absolute;
-        right: 0.75rem;
-        top: 0.5rem;
-    }
+#blazor-error-ui .dismiss {
+    cursor: pointer;
+    position: absolute;
+    right: 0.75rem;
+    top: 0.5rem;
+}

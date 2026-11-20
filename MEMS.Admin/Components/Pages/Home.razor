@@ -1,7 +1,29 @@
 ﻿@page "/"
+@using Microsoft.AspNetCore.Components.Authorization
 
-<PageTitle>Home</PageTitle>
+<PageTitle>MEMS Administration Portal</PageTitle>
 
-<h1>Hello, world!</h1>
+<div class="container py-4">
+    <div class="civic-hero mb-4">
+        <h1 class="h2 fw-bold mb-2">BBB Administration Portal</h1>
+        <p class="mb-0 opacity-75" style="max-width: 650px;">
+            Manage municipal election profiles, contested offices, and registered candidate rosters across participating
+            jurisdictions.
+        </p>
+    </div>
 
-Welcome to your new app.
+    <div class="civic-card p-4">
+        <AuthorizeView>
+            <Authorized>
+                <h5 class="fw-bold mb-2">Welcome back, @context.User.Identity?.Name</h5>
+                <p class="text-muted mb-3">Your administrative session is active. Continue to your dashboard to manage
+                    election records.</p>
+                    <a href="/admin" class="btn btn-civic-primary px-4">Open Admin Dashboard &rarr;</a>
+                </Authorized>
+                <NotAuthorized>
+                    <h5 class="fw-bold mb-2">Administrator Sign-In Required</h5>
+                    <a href="/login" class="btn btn-civic-primary px-4">Sign In</a>
+                </NotAuthorized>
+            </AuthorizeView>
+        </div>
+    </div>

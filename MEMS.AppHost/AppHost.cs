@@ -11,13 +11,14 @@ var api = builder.AddProject<Projects.MEMS_Api>("mems-api")
                  .WaitFor(memsDb)
                  .WithExternalHttpEndpoints();
 
-// builder.AddProject<Projects.MEMS_Admin>("mems-admin")
-//        .WithReference(memsDb)
-//        .WithReference(api)
-//        .WaitFor(memsDb);
+builder.AddProject<Projects.MEMS_Admin>("mems-admin")
+       .WithReference(memsDb)
+       .WithReference(api)
+       .WaitFor(memsDb)
+       .WithExternalHttpEndpoints();
 
-// builder.AddProject<Projects.MEMS_Public>("mems-public")
-//        .WithReference(api)
-//        .WaitFor(api);
+builder.AddProject<Projects.MEMS_Public>("mems-public")
+       .WithReference(api)
+       .WaitFor(api);
 
 builder.Build().Run();

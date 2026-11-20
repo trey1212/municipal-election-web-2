@@ -1,0 +1,261 @@
+@page "/admin/candidates/create"
+@page "/admin/candidates/edit/{Id:int}"
+@rendermode InteractiveServer
+@attribute [Authorize(Roles = "SuperAdmin,MunicipalityAdmin")]
+@using System.ComponentModel.DataAnnotations
+@using MEMS.Admin.Services
+@using MEMS.Data
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject ApplicationDbContext Db
+@inject TenantContextService TenantContext
+@inject ImageUploadService ImageUpload
+@inject NavigationManager Nav
+
+<PageTitle>@(IsEdit ? "Edit Candidate" : "Add Candidate")</PageTitle>
+
+<div class="mb-3">
+    <a href="/admin/candidates" class="btn btn-sm btn-outline-secondary">&larr; Back to Candidates</a>
+</div>
+
+<div class="civic-card overflow-hidden" style="max-width: 760px;">
+    <div class="p-4 text-white" style="background: linear-gradient(135deg, #0f294a 0%, #1d4ed8 100%);">
+        <div class="small text-uppercase fw-semibold text-warning mb-1">Candidate Profile</div>
+        <h3 class="h4 fw-bold mb-0">@(IsEdit ? "Edit Candidate" : "Add New Candidate")</h3>
+    </div>
+
+    <div class="p-4">
+        @if (!string.IsNullOrEmpty(errorMessage))
+        {
+            <div class="alert alert-danger">@errorMessage</div>
+        }
+
+        <EditForm Model="Model" OnValidSubmit="HandleSubmitAsync">
+            <DataAnnotationsValidator />
+            <ValidationSummary class="text-danger small" />
+
+            <div class="mb-3">
+                <label class="form-label fw-semibold">Candidate Name</label>
+                <InputText @bind-Value="Model.Name" class="form-control" />
+                <ValidationMessage For="() => Model.Name" class="text-danger small" />
+            </div>
+
+            <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                    <label class="form-label fw-semibold">Municipality</label>
+                    <InputSelect Value="Model.MunicipalityId" ValueChanged="@((int id) => OnMunicipalityChanged(id))"
+                                 ValueExpression="@(() => Model.MunicipalityId)" class="form-select" disabled="@(!isSuperAdmin)">
+                        <option value="0">-- Select Municipality --</option>
+                        @foreach (var muni in municipalities)
+                        {
+                            <option value="@muni.MunicipalityId">@muni.Name</option>
+                        }
+                    </InputSelect>
+                    <ValidationMessage For="() => Model.MunicipalityId" class="text-danger small" />
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label fw-semibold">Position</label>
+                    <InputSelect @bind-Value="Model.PositionId" class="form-select">
+                        <option value="0">-- Select Position --</option>
+                        @foreach (var pos in filteredPositions)
+                        {
+                            <option value="@pos.PositionId">@pos.Name</option>
+                        }
+                    </InputSelect>
+                    <ValidationMessage For="() => Model.PositionId" class="text-danger small" />
+                </div>
+            </div>
+
+            <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                    <label class="form-label fw-semibold">Email Address <span
+                        class="text-muted fw-normal">(Optional)</span></label>
+                        <InputText @bind-Value="Model.Email" class="form-control" />
+                        <ValidationMessage For="() => Model.Email" class="text-danger small" />
+                    </div>
+
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold">Website URL <span
+                            class="text-muted fw-normal">(Optional)</span></label>
+                            <InputText @bind-Value="Model.Website" class="form-control" placeholder="https://..." />
+                            <ValidationMessage For="() => Model.Website" class="text-danger small" />
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold">Biography</label>
+                        <InputTextArea @bind-Value="Model.Biography" class="form-control" rows="5" />
+                        <ValidationMessage For="() => Model.Biography" class="text-danger small" />
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label fw-semibold">Candidate Photo <span class="text-muted fw-normal">@(IsEdit ?
+                                       "(Optional)" : "(Required)")</span></label>
+                            @if (!string.IsNullOrEmpty(existingPhotoUrl))
+                            {
+                                <div class="mb-2">
+                                    <img src="@existingPhotoUrl" alt="Current Photo" onerror="this.style.display='none'"
+                                         class="img-thumbnail rounded-circle" style="height: 100px; width: 100px; object-fit: cover;" />
+                                </div>
+                            }
+                            <InputFile OnChange="HandleFileSelected" class="form-control" accept=".jpg,.jpeg,.png,.webp" />
+                        </div>
+
+                        <div class="pt-3 border-top d-flex gap-2">
+                            <button type="submit" class="btn btn-civic-primary px-4">Save Candidate</button>
+                            <a href="/admin/candidates" class="btn btn-outline-secondary">Cancel</a>
+                        </div>
+                    </EditForm>
+                </div>
+            </div>
+
+@code {
+    [Parameter] public int? Id { get; set; }
+    private bool IsEdit => Id.HasValue;
+
+    private CandidateInput Model { get; set; } = new();
+    private List<Municipality> municipalities = [];
+    private List<Position> allPositions = [];
+    private List<Position> filteredPositions = [];
+    private IBrowserFile? selectedPhoto;
+    private string? existingPhotoUrl;
+    private string? errorMessage;
+    private bool isSuperAdmin;
+    private int? tenantMunicipalityId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        (isSuperAdmin, tenantMunicipalityId) = await TenantContext.GetCurrentTenantAsync();
+
+        var muniQuery = Db.Municipalities.AsQueryable();
+        var posQuery = Db.Positions.AsQueryable();
+
+        if (!isSuperAdmin && tenantMunicipalityId.HasValue)
+        {
+            muniQuery = muniQuery.Where(m => m.MunicipalityId == tenantMunicipalityId.Value);
+            posQuery = posQuery.Where(p => p.MunicipalityId == tenantMunicipalityId.Value);
+        }
+
+        municipalities = await muniQuery.OrderBy(m => m.Name).ToListAsync();
+        allPositions = await posQuery.OrderBy(p => p.Name).ToListAsync();
+
+        if (IsEdit)
+        {
+            var cand = await Db.Candidates.FindAsync(Id!.Value);
+            if (cand is null || (!isSuperAdmin && cand.MunicipalityId != tenantMunicipalityId))
+            {
+                Nav.NavigateTo("/admin/candidates");
+                return;
+            }
+
+            Model = new CandidateInput
+            {
+                Name = cand.Name,
+                MunicipalityId = cand.MunicipalityId,
+                PositionId = cand.PositionId,
+                Email = cand.Email,
+                Website = cand.Website,
+                Biography = cand.Biography ?? string.Empty
+            };
+            existingPhotoUrl = cand.PhotoUrl;
+            filteredPositions = allPositions.Where(p => p.MunicipalityId == cand.MunicipalityId).ToList();
+        }
+        else if (!isSuperAdmin && tenantMunicipalityId.HasValue)
+        {
+            OnMunicipalityChanged(tenantMunicipalityId.Value);
+        }
+    }
+
+    private void OnMunicipalityChanged(int newMunicipalityId)
+    {
+        Model.MunicipalityId = newMunicipalityId;
+        filteredPositions = allPositions.Where(p => p.MunicipalityId == newMunicipalityId).ToList();
+        Model.PositionId = filteredPositions.FirstOrDefault()?.PositionId ?? 0;
+    }
+
+    private void HandleFileSelected(InputFileChangeEventArgs e) => selectedPhoto = e.File;
+
+    private async Task HandleSubmitAsync()
+    {
+        errorMessage = null;
+
+        if (!isSuperAdmin && tenantMunicipalityId.HasValue)
+            Model.MunicipalityId = tenantMunicipalityId.Value;
+
+        if (!filteredPositions.Any(p => p.PositionId == Model.PositionId && p.MunicipalityId == Model.MunicipalityId))
+        {
+            errorMessage = "Selected position does not belong to the chosen municipality.";
+            return;
+        }
+
+        if (!IsEdit && selectedPhoto is null)
+        {
+            errorMessage = "Please select a candidate photograph.";
+            return;
+        }
+
+        try
+        {
+            string? uploadedPath = null;
+            if (selectedPhoto is not null)
+                uploadedPath = await ImageUpload.SaveImageAsync(selectedPhoto, "candidates");
+
+            if (!IsEdit)
+            {
+                Db.Candidates.Add(new Candidate
+                {
+                    Name = Model.Name.Trim(),
+                    MunicipalityId = Model.MunicipalityId,
+                    PositionId = Model.PositionId,
+                    Email = string.IsNullOrWhiteSpace(Model.Email) ? null : Model.Email.Trim(),
+                    Website = string.IsNullOrWhiteSpace(Model.Website) ? null : Model.Website.Trim(),
+                    Biography = Model.Biography,
+                    PhotoUrl = uploadedPath
+                });
+            }
+            else
+            {
+                var cand = await Db.Candidates.FindAsync(Id!.Value);
+                if (cand is null || (!isSuperAdmin && cand.MunicipalityId != tenantMunicipalityId)) return;
+
+                cand.Name = Model.Name.Trim();
+                cand.MunicipalityId = Model.MunicipalityId;
+                cand.PositionId = Model.PositionId;
+                cand.Email = string.IsNullOrWhiteSpace(Model.Email) ? null : Model.Email.Trim();
+                cand.Website = string.IsNullOrWhiteSpace(Model.Website) ? null : Model.Website.Trim();
+                cand.Biography = Model.Biography;
+                if (uploadedPath is not null)
+                    cand.PhotoUrl = uploadedPath;
+            }
+
+            await Db.SaveChangesAsync();
+            Nav.NavigateTo("/admin/candidates");
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+    }
+
+    public class CandidateInput
+    {
+        [Required, StringLength(100, MinimumLength = 2)]
+        public string Name { get; set; } = string.Empty;
+
+        [Range(1, int.MaxValue, ErrorMessage = "Please select a municipality.")]
+        public int MunicipalityId { get; set; }
+
+        [Range(1, int.MaxValue, ErrorMessage = "Please select a position.")]
+        public int PositionId { get; set; }
+
+        [EmailAddress, StringLength(150)]
+        public string? Email { get; set; }
+
+        [Url, StringLength(250)]
+        public string? Website { get; set; }
+
+        [MaxLength(2000)]
+        public string Biography { get; set; } = string.Empty;
+    }
+}

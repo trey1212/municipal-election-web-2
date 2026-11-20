@@ -1,0 +1,126 @@
+@page "/admin"
+@attribute [Authorize(Roles = "SuperAdmin,MunicipalityAdmin")]
+@using MEMS.Admin.Services
+@using MEMS.Data
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject ApplicationDbContext Db
+@inject TenantContextService TenantContext
+
+<PageTitle>Admin Dashboard</PageTitle>
+
+<div class="civic-hero mb-4 d-flex flex-wrap justify-content-between align-items-center gap-3">
+    <div>
+        <h1 class="h3 fw-bold mb-1">Administration Dashboard</h1>
+        <p class="small mb-0 opacity-75">
+            @(isSuperAdmin
+                ? "Overview of all participating municipalities, contested offices, and registered candidates."
+                : "Overview of contested offices and registered candidates within your assigned municipality.")
+        </p>
+    </div>
+    <span class="badge bg-light text-dark px-3 py-2 fw-semibold">
+        Role: @(isSuperAdmin ? "SuperAdmin" : "MunicipalityAdmin")
+    </span>
+</div>
+
+@if (isLoading)
+{
+    <div class="text-center py-5 text-muted">
+        <div class="spinner-border text-primary mb-2" role="status"></div>
+        <div>Loading dashboard metrics...</div>
+    </div>
+}
+else
+{
+    <div class="row g-4">
+        <div class="col-md-4">
+            <div class="civic-card h-100 d-flex flex-column overflow-hidden">
+                <div style="height: 4px; background-color: #0f294a;"></div>
+                <div class="p-4 d-flex flex-column flex-grow-1">
+                    <div class="text-uppercase small fw-bold text-muted mb-1">
+                        @(isSuperAdmin ? "Total Municipalities" : "Assigned Municipality")
+                    </div>
+                    <div class="display-5 fw-bold text-dark mb-2">@municipalityCount</div>
+                    <p class="text-secondary small flex-grow-1 mb-3">
+                        @(isSuperAdmin
+                            ? "Active municipal election tenants configured in the system."
+                            : "Your scoped municipal election jurisdiction.")
+                    </p>
+                    @if (isSuperAdmin)
+                    {
+                        <a href="/admin/municipalities" class="btn btn-sm btn-civic-primary w-100">
+                            Manage Municipalities &rarr;
+                        </a>
+                    }
+                    else
+                    {
+                        <span class="btn btn-sm btn-outline-secondary w-100 disabled">
+                            Tenant-Scoped Access
+                        </span>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="civic-card h-100 d-flex flex-column overflow-hidden">
+                <div style="height: 4px; background-color: #0f766e;"></div>
+                <div class="p-4 d-flex flex-column flex-grow-1">
+                    <div class="text-uppercase small fw-bold text-muted mb-1">Contested Positions</div>
+                    <div class="display-5 fw-bold text-dark mb-2">@positionCount</div>
+                    <p class="text-secondary small flex-grow-1 mb-3">
+                        Elected offices and council seats available on the ballot.
+                    </p>
+                    <a href="/admin/positions" class="btn btn-sm btn-civic-primary w-100">
+                        Manage Positions &rarr;
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="civic-card h-100 d-flex flex-column overflow-hidden">
+                <div style="height: 4px; background-color: #1d4ed8;"></div>
+                <div class="p-4 d-flex flex-column flex-grow-1">
+                    <div class="text-uppercase small fw-bold text-muted mb-1">Registered Candidates</div>
+                    <div class="display-5 fw-bold text-dark mb-2">@candidateCount</div>
+                    <p class="text-secondary small flex-grow-1 mb-3">
+                        Approved candidate profiles published to the voter portal.
+                    </p>
+                    <a href="/admin/candidates" class="btn btn-sm btn-civic-primary w-100">
+                        Manage Candidates &rarr;
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private bool isLoading = true;
+    private bool isSuperAdmin;
+    private int municipalityCount;
+    private int positionCount;
+    private int candidateCount;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var (superAdmin, municipalityId) = await TenantContext.GetCurrentTenantAsync();
+        isSuperAdmin = superAdmin;
+
+        if (isSuperAdmin)
+        {
+            municipalityCount = await Db.Municipalities.CountAsync();
+            positionCount = await Db.Positions.CountAsync();
+            candidateCount = await Db.Candidates.CountAsync();
+        }
+        else if (municipalityId.HasValue)
+        {
+            municipalityCount = 1;
+            positionCount = await Db.Positions.CountAsync(p => p.MunicipalityId == municipalityId.Value);
+            candidateCount = await Db.Candidates.CountAsync(c => c.MunicipalityId == municipalityId.Value);
+        }
+
+        isLoading = false;
+    }
+}

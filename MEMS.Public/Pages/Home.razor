@@ -1,7 +1,96 @@
 ﻿@page "/"
+@using System.Net.Http.Json
+@using MEMS.Shared.DTOs
+@inject HttpClient Http
+@inject IConfiguration Config
 
-<PageTitle>Home</PageTitle>
+<PageTitle>Municipal Elections Directory</PageTitle>
 
-<h1>Hello, world!</h1>
+<div class="container py-4">
+    <div class="civic-hero mb-4">
+        <h1 class="h2 fw-bold mb-2">Municipal Election Portal</h1>
+        <p class="mb-0 opacity-75" style="max-width: 680px;">
+            Select your municipality below to review registered candidates, explore platform details, and build a
+            private, printable voting guide for election day.
+        </p>
+    </div>
 
-Welcome to your new app.
+    @if (errorMessage is not null)
+    {
+        <div class="alert alert-danger shadow-sm">@errorMessage</div>
+    }
+    else if (municipalities is null)
+    {
+        <div class="text-center py-5 text-muted">
+            <div class="spinner-border text-primary mb-2" role="status"></div>
+            <div>Loading municipalities...</div>
+        </div>
+    }
+    else
+    {
+        <div class="row g-4">
+            @foreach (var muni in municipalities)
+            {
+                <div class="col-md-4">
+                    <div class="civic-card h-100 d-flex flex-column overflow-hidden">
+                        <div style="height: 4px; background-color: #0f294a;"></div>
+                        <div class="p-4 d-flex flex-column flex-grow-1">
+                            <div class="d-flex align-items-center mb-3">
+                                @if (!string.IsNullOrEmpty(muni.LogoUrl))
+                                {
+                                    <img src="@ResolveImage(muni.LogoUrl)" alt="@muni.Name logo" onerror="this.style.display='none'"
+                                         class="me-3 rounded border" style="height: 52px; width: 52px; object-fit: cover;" />
+                                }
+                                <div>
+                                    <h5 class="fw-bold mb-1 text-dark">@muni.Name</h5>
+                                    <span class="badge text-bg-light border text-secondary">@muni.Province</span>
+                                </div>
+                            </div>
+
+                            <p class="text-secondary small flex-grow-1 mb-3">
+                                @(string.IsNullOrWhiteSpace(muni.Description)
+                                    ? $"Official candidate directory and voter information guide for {muni.Name}."
+                                    : muni.Description)
+                            </p>
+
+                            <div
+                                class="bg-light rounded-2 p-2 px-3 mb-3 border d-flex justify-content-between align-items-center small">
+                                <span class="text-muted fw-semibold">Election Day</span>
+                                <span class="fw-bold text-dark">@muni.ElectionDate.ToString("MMMM d, yyyy")</span>
+                            </div>
+
+                            <a href="/@muni.Slug" class="btn btn-civic-primary w-100 py-2">
+                                View Candidates &rarr;
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private List<MunicipalityDto>? municipalities;
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            municipalities = await Http.GetFromJsonAsync<List<MunicipalityDto>>("api/municipalities") ?? [];
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Unable to load municipalities from API: {ex.Message}";
+        }
+    }
+
+    private string ResolveImage(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return string.Empty;
+        if (url.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return url;
+        var adminBase = Config["AdminBaseUrl"]?.TrimEnd('/') ?? string.Empty;
+        return $"{adminBase}{url}";
+    }
+}

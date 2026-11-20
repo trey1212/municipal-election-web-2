@@ -1,0 +1,139 @@
+@page "/admin/positions"
+@rendermode InteractiveServer
+@attribute [Authorize(Roles = "SuperAdmin,MunicipalityAdmin")]
+@using MEMS.Admin.Services
+@using MEMS.Data
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject ApplicationDbContext Db
+@inject TenantContextService TenantContext
+
+<PageTitle>Positions</PageTitle>
+
+<div class="civic-hero mb-4 d-flex flex-wrap justify-content-between align-items-center gap-3">
+    <div>
+        <h1 class="h3 fw-bold mb-1">Positions</h1>
+        <p class="small mb-0 opacity-75">Manage elected offices and seat counts available in your municipal election.
+        </p>
+    </div>
+    <a href="/admin/positions/create" class="btn btn-warning fw-semibold text-dark px-3">
+        + Create Position
+    </a>
+</div>
+
+@if (!string.IsNullOrEmpty(errorMessage))
+{
+    <div class="alert alert-danger shadow-sm">@errorMessage</div>
+}
+
+<div class="civic-card overflow-hidden">
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0 civic-table">
+            <thead>
+                <tr>
+                    <th class="ps-4">Position Name</th>
+                    <th>Seats Available</th>
+                    <th>Municipality</th>
+                    <th class="text-end pe-4">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (!positions.Any())
+                {
+                    <tr>
+                        <td colspan="4" class="text-center text-muted py-5">
+                            No positions found. Click <strong>+ Create Position</strong> to add an elected office.
+                        </td>
+                    </tr>
+                }
+                else
+                {
+                    @foreach (var pos in positions)
+                    {
+                        <tr>
+                            <td class="ps-4 fw-bold text-dark">@pos.Name</td>
+                            <td>
+                                <span class="civic-badge-position">
+                                    @pos.SeatsAvailable seat@(pos.SeatsAvailable > 1 ? "s" : "")
+                                </span>
+                            </td>
+                            <td class="fw-medium text-secondary">@pos.Municipality?.Name</td>
+                            <td class="text-end pe-4">
+                                <button class="btn btn-sm btn-outline-secondary"
+                                        @onclick="() => selectedPosition = pos">Details</button>
+                                <a href="/admin/positions/edit/@pos.PositionId"
+                                   class="btn btn-sm btn-outline-primary ms-1">Edit</a>
+                                <button class="btn btn-sm btn-outline-danger ms-1"
+                                        @onclick="() => DeleteAsync(pos)">Delete</button>
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@if (selectedPosition is not null)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(15, 23, 42, 0.6);">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
+                <div class="modal-header text-white" style="background-color: #0f294a;">
+                    <div>
+                        <h5 class="modal-title fw-bold mb-0">@selectedPosition.Name</h5>
+                        <small class="text-warning">@selectedPosition.Municipality?.Name</small>
+                    </div>
+                    <button type="button" class="btn-close btn-close-white"
+                            @onclick="() => selectedPosition = null"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="bg-light rounded-3 p-3 border small">
+                        <div class="mb-2"><strong>Municipality:</strong> @selectedPosition.Municipality?.Name</div>
+                        <div><strong>Seats Available:</strong> @selectedPosition.SeatsAvailable</div>
+                    </div>
+                </div>
+                <div class="modal-footer bg-light">
+                    <button class="btn btn-secondary" @onclick="() => selectedPosition = null">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<Position> positions = [];
+    private Position? selectedPosition;
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        var (isSuper, muniId) = await TenantContext.GetCurrentTenantAsync();
+        var query = Db.Positions.Include(p => p.Municipality).AsQueryable();
+
+        if (!isSuper && muniId.HasValue)
+            query = query.Where(p => p.MunicipalityId == muniId.Value);
+
+        positions = await query.OrderBy(p => p.Municipality!.Name).ThenBy(p => p.Name).ToListAsync();
+    }
+
+    private async Task DeleteAsync(Position pos)
+    {
+        errorMessage = null;
+        var (isSuper, muniId) = await TenantContext.GetCurrentTenantAsync();
+        if (!isSuper && pos.MunicipalityId != muniId) return;
+
+        try
+        {
+            Db.Positions.Remove(pos);
+            await Db.SaveChangesAsync();
+            await LoadAsync();
+        }
+        catch (DbUpdateException)
+        {
+            errorMessage = $"Cannot delete {pos.Name} while candidates are assigned to this position.";
+        }
+    }
+}

@@ -1,0 +1,35 @@
+@page "/login"
+
+<PageTitle>Admin Login</PageTitle>
+
+<div class="container py-5">
+    <div class="civic-card overflow-hidden mx-auto" style="max-width: 440px;">
+        <div class="p-4 text-white"
+             style="background: linear-gradient(135deg, #0b1f3a 0%, #163a68 100%); border-bottom: 3px solid #d97706;">
+            <h3 class="h4 fw-bold mb-1">BBB Administration</h3>
+        </div>
+
+        <div class="p-4">
+            @if (Error == "1")
+            {
+                <div class="alert alert-danger small py-2">Invalid username or password.</div>
+            }
+
+            <form method="post" action="/auth/login">
+                <div class="mb-3">
+                    <label class="form-label fw-semibold small text-muted">Username</label>
+                    <input name="username" class="form-control" required />
+                </div>
+                <div class="mb-4">
+                    <label class="form-label fw-semibold small text-muted">Password</label>
+                    <input name="password" type="password" class="form-control" required />
+                </div>
+                <button type="submit" class="btn btn-civic-primary w-100 py-2">Sign In</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+@code {
+    [SupplyParameterFromQuery] public string? Error { get; set; }
+}

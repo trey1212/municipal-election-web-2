@@ -1,0 +1,146 @@
+@page "/admin/positions/create"
+@page "/admin/positions/edit/{Id:int}"
+@rendermode InteractiveServer
+@attribute [Authorize(Roles = "SuperAdmin,MunicipalityAdmin")]
+@using System.ComponentModel.DataAnnotations
+@using MEMS.Admin.Services
+@using MEMS.Data
+@using MEMS.Data.Models
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject ApplicationDbContext Db
+@inject TenantContextService TenantContext
+@inject NavigationManager Nav
+
+<PageTitle>@(IsEdit ? "Edit Position" : "Create Position")</PageTitle>
+
+<div class="mb-3">
+    <a href="/admin/positions" class="btn btn-sm btn-outline-secondary">&larr; Back to Positions</a>
+</div>
+
+<div class="civic-card overflow-hidden" style="max-width: 680px;">
+    <div class="p-4 text-white" style="background: linear-gradient(135deg, #0f294a 0%, #1d4ed8 100%);">
+        <div class="small text-uppercase fw-semibold text-warning mb-1">Ballot Office Configuration</div>
+        <h3 class="h4 fw-bold mb-0">@(IsEdit ? "Edit Position" : "Create New Position")</h3>
+    </div>
+
+    <div class="p-4">
+        <EditForm Model="Model" OnValidSubmit="HandleSubmitAsync">
+            <DataAnnotationsValidator />
+            <ValidationSummary class="text-danger small" />
+
+            <div class="mb-3">
+                <label class="form-label fw-semibold">Position Name</label>
+                <InputText @bind-Value="Model.Name" class="form-control" placeholder="e.g., Mayor or City Councillor" />
+                <ValidationMessage For="() => Model.Name" class="text-danger small" />
+            </div>
+
+            <div class="row g-3 mb-4">
+                <div class="col-md-5">
+                    <label class="form-label fw-semibold">Seats Available</label>
+                    <InputNumber @bind-Value="Model.SeatsAvailable" class="form-control" />
+                    <ValidationMessage For="() => Model.SeatsAvailable" class="text-danger small" />
+                </div>
+
+                <div class="col-md-7">
+                    <label class="form-label fw-semibold">Municipality</label>
+                    <InputSelect @bind-Value="Model.MunicipalityId" class="form-select" disabled="@(!isSuperAdmin)">
+                        <option value="0">-- Select Municipality --</option>
+                        @foreach (var muni in municipalities)
+                        {
+                            <option value="@muni.MunicipalityId">@muni.Name</option>
+                        }
+                    </InputSelect>
+                    <ValidationMessage For="() => Model.MunicipalityId" class="text-danger small" />
+                </div>
+            </div>
+
+            <div class="pt-3 border-top d-flex gap-2">
+                <button type="submit" class="btn btn-civic-primary px-4">Save Position</button>
+                <a href="/admin/positions" class="btn btn-outline-secondary">Cancel</a>
+            </div>
+        </EditForm>
+    </div>
+</div>
+
+@code {
+    [Parameter] public int? Id { get; set; }
+    private bool IsEdit => Id.HasValue;
+
+    private PositionInput Model { get; set; } = new() { SeatsAvailable = 1 };
+    private List<Municipality> municipalities = [];
+    private bool isSuperAdmin;
+    private int? tenantMunicipalityId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        (isSuperAdmin, tenantMunicipalityId) = await TenantContext.GetCurrentTenantAsync();
+
+        var muniQuery = Db.Municipalities.AsQueryable();
+        if (!isSuperAdmin && tenantMunicipalityId.HasValue)
+            muniQuery = muniQuery.Where(m => m.MunicipalityId == tenantMunicipalityId.Value);
+
+        municipalities = await muniQuery.OrderBy(m => m.Name).ToListAsync();
+
+        if (IsEdit)
+        {
+            var pos = await Db.Positions.FindAsync(Id!.Value);
+            if (pos is null || (!isSuperAdmin && pos.MunicipalityId != tenantMunicipalityId))
+            {
+                Nav.NavigateTo("/admin/positions");
+                return;
+            }
+
+            Model = new PositionInput
+            {
+                Name = pos.Name,
+                SeatsAvailable = pos.SeatsAvailable,
+                MunicipalityId = pos.MunicipalityId
+            };
+        }
+        else if (!isSuperAdmin && tenantMunicipalityId.HasValue)
+        {
+            Model.MunicipalityId = tenantMunicipalityId.Value;
+        }
+    }
+
+    private async Task HandleSubmitAsync()
+    {
+        if (!isSuperAdmin && tenantMunicipalityId.HasValue)
+            Model.MunicipalityId = tenantMunicipalityId.Value;
+
+        if (!IsEdit)
+        {
+            Db.Positions.Add(new Position
+            {
+                Name = Model.Name.Trim(),
+                SeatsAvailable = Model.SeatsAvailable,
+                MunicipalityId = Model.MunicipalityId
+            });
+        }
+        else
+        {
+            var pos = await Db.Positions.FindAsync(Id!.Value);
+            if (pos is null || (!isSuperAdmin && pos.MunicipalityId != tenantMunicipalityId)) return;
+
+            pos.Name = Model.Name.Trim();
+            pos.SeatsAvailable = Model.SeatsAvailable;
+            pos.MunicipalityId = Model.MunicipalityId;
+        }
+
+        await Db.SaveChangesAsync();
+        Nav.NavigateTo("/admin/positions");
+    }
+
+    public class PositionInput
+    {
+        [Required, StringLength(100, MinimumLength = 2)]
+        public string Name { get; set; } = string.Empty;
+
+        [Range(1, 50, ErrorMessage = "Seats available must be between 1 and 50.")]
+        public int SeatsAvailable { get; set; } = 1;
+
+        [Range(1, int.MaxValue, ErrorMessage = "Please select a municipality.")]
+        public int MunicipalityId { get; set; }
+    }
+}

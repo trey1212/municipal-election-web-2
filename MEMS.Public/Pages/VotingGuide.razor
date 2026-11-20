@@ -1,0 +1,222 @@
+@page "/guide"
+@page "/{TenantSlug}/guide"
+@using System.Net.Http.Json
+@using MEMS.Public.Services
+@using MEMS.Shared.DTOs
+@inject HttpClient Http
+@inject VotingGuideSessionService GuideService
+@inject IJSRuntime JS
+@inject IConfiguration Config
+
+<PageTitle>Personal Voting Guide</PageTitle>
+
+<div class="container py-4">
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="alert alert-danger shadow-sm">@errorMessage</div>
+    }
+    else if (isLoading)
+    {
+        <div class="text-center py-5 text-muted">
+            <div class="spinner-border text-primary mb-2" role="status"></div>
+            <div>Loading your voting guide...</div>
+        </div>
+    }
+    else if (municipality is null)
+    {
+        <div class="civic-card p-5 text-center my-4">
+            <h4 class="fw-bold mb-2">Municipality Not Found</h4>
+            <p class="text-muted mb-3">Municipality "<strong>@TenantSlug</strong>" was not found.</p>
+            <a href="/" class="btn btn-civic-primary">Return to Directory</a>
+        </div>
+    }
+    else
+    {
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3 no-print">
+            <div class="d-flex flex-wrap align-items-center gap-2">
+                <a href="/@municipality.Slug" class="btn btn-outline-secondary btn-sm">
+                    &larr; @municipality.Name Candidates
+                </a>
+                @if (allMunicipalities.Count > 1)
+                {
+                    <div class="btn-group">
+                        @foreach (var muni in allMunicipalities)
+                        {
+                            <a href="/@muni.Slug/guide"
+                               class="btn btn-sm @(muni.Slug == municipality.Slug ? "btn-civic-primary" : "btn-outline-secondary")">
+                                @muni.Name
+                            </a>
+                        }
+                    </div>
+                }
+            </div>
+            <button class="btn btn-civic-primary" @onclick="PrintGuideAsync">
+                Print Voting Guide
+            </button>
+        </div>
+
+        <div class="ballot-sheet p-4 p-md-5">
+            <div class="border-bottom pb-4 mb-4 d-flex flex-wrap justify-content-between align-items-start gap-3">
+                <div>
+                    <div class="text-uppercase small fw-bold text-primary mb-1">@municipality.Province Municipal Election
+                    </div>
+                    <h2 class="fw-bold mb-1 text-dark">@municipality.Name — Personal Voting Guide</h2>
+                    <p class="text-muted small mb-0">
+                        Private session reference sheet &bull; Bring this printed guide to your polling station
+                    </p>
+                </div>
+                <div class="bg-light border rounded-3 p-3 small">
+                    <div class="mb-1"><strong>Election Date:</strong> @municipality.ElectionDate.ToString("MMMM d, yyyy")
+                    </div>
+                    <div><strong>Print Date:</strong> @DateTime.Now.ToString("MMMM d, yyyy")</div>
+                </div>
+            </div>
+
+            @if (!selectedCandidates.Any())
+            {
+                <div class="text-center py-4">
+                    <h5 class="fw-bold mb-2">Your @municipality.Name Voting Guide is Empty</h5>
+                    <p class="text-muted mb-3">
+                        Select candidates from the @municipality.Name directory to build your personal ballot checklist.
+                    </p>
+                    <a href="/@municipality.Slug" class="btn btn-civic-primary no-print">
+                        Browse @municipality.Name Candidates
+                    </a>
+                </div>
+            }
+            else
+            {
+                @foreach (var pos in positions)
+                {
+                    var picks = selectedCandidates.Where(c => c.PositionId == pos.PositionId).ToList();
+                    if (picks.Any())
+                    {
+                        <div class="mb-4">
+                            <div class="d-flex justify-content-between align-items-center bg-light border rounded-2 px-3 py-2 mb-2">
+                                <h5 class="fw-bold mb-0 text-dark">@pos.Name</h5>
+                                <span class="badge text-bg-secondary">
+                                    Vote for up to @pos.SeatsAvailable
+                                </span>
+                            </div>
+
+                            <ul class="list-group list-group-flush border rounded-2">
+                                @foreach (var cand in picks)
+                                {
+                                    <li class="list-group-item d-flex justify-content-between align-items-center py-3">
+                                        <div class="d-flex align-items-center">
+                                            <span class="fs-4 me-3 text-secondary" aria-hidden="true">&#9744;</span>
+                                            <div class="civic-monogram civic-monogram-sm me-3 position-relative overflow-hidden no-print">
+                                                <span>@GetInitials(cand.Name)</span>
+                                                @if (!string.IsNullOrEmpty(cand.PhotoUrl))
+                                                {
+                                                    <img src="@ResolveImage(cand.PhotoUrl)" alt="@cand.Name" onerror="this.style.display='none'"
+                                                         class="position-absolute top-0 start-0 w-100 h-100" style="object-fit: cover;" />
+                                                }
+                                            </div>
+                                            <div>
+                                                <div class="fw-bold text-dark">@cand.Name</div>
+                                                <div class="small text-muted">@pos.Name &bull; @municipality.Name</div>
+                                            </div>
+                                        </div>
+                                        <button class="btn btn-sm btn-outline-danger no-print"
+                                                @onclick="() => RemoveCandidateAsync(cand.CandidateId)">
+                                            Remove
+                                        </button>
+                                    </li>
+                                }
+                            </ul>
+                        </div>
+                    }
+                }
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public string? TenantSlug { get; set; }
+
+    private bool isLoading = true;
+    private string? errorMessage;
+    private List<MunicipalityDto> allMunicipalities = [];
+    private MunicipalityDto? municipality;
+    private List<PositionDto> positions = [];
+    private List<CandidateDto> selectedCandidates = [];
+
+    protected override async Task OnParametersSetAsync()
+    {
+        isLoading = true;
+        errorMessage = null;
+        municipality = null;
+
+        try
+        {
+            allMunicipalities = await Http.GetFromJsonAsync<List<MunicipalityDto>>("api/municipalities") ?? [];
+
+            if (string.IsNullOrWhiteSpace(TenantSlug))
+            {
+                foreach (var m in allMunicipalities)
+                {
+                    var ids = await GuideService.GetSelectedCandidateIdsAsync(m.Slug);
+                    if (ids.Any())
+                    {
+                        municipality = m;
+                        break;
+                    }
+                }
+
+                municipality ??= allMunicipalities.FirstOrDefault();
+            }
+            else
+            {
+                municipality = allMunicipalities.FirstOrDefault(m =>
+                    string.Equals(m.Slug, TenantSlug.Trim(), StringComparison.OrdinalIgnoreCase));
+            }
+
+            if (municipality is not null)
+            {
+                positions = await Http.GetFromJsonAsync<List<PositionDto>>($"api/{municipality.Slug}/positions") ?? [];
+                var allTenantCandidates = await Http.GetFromJsonAsync<List<CandidateDto>>($"api/{municipality.Slug}/candidates") ?? [];
+                var selectedIds = await GuideService.GetSelectedCandidateIdsAsync(municipality.Slug);
+
+                selectedCandidates = allTenantCandidates
+                    .Where(c => selectedIds.Contains(c.CandidateId))
+                    .ToList();
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Unable to load voting guide: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task RemoveCandidateAsync(int candidateId)
+    {
+        if (municipality is null) return;
+        await GuideService.RemoveCandidateAsync(municipality.Slug, candidateId);
+        selectedCandidates.RemoveAll(c => c.CandidateId == candidateId);
+    }
+
+    private async Task PrintGuideAsync() => await JS.InvokeVoidAsync("window.print");
+
+    private static string GetInitials(string? fullName)
+    {
+        if (string.IsNullOrWhiteSpace(fullName)) return "?";
+        var parts = fullName.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length == 1
+            ? parts[0][..1].ToUpperInvariant()
+            : $"{parts[0][0]}{parts[^1][0]}".ToUpperInvariant();
+    }
+
+    private string ResolveImage(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return string.Empty;
+        if (url.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return url;
+        var adminBase = Config["AdminBaseUrl"]?.TrimEnd('/') ?? string.Empty;
+        return $"{adminBase}{url}";
+    }
+}

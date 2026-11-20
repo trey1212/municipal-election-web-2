@@ -1,0 +1,178 @@
+@page "/admin/candidates"
+@rendermode InteractiveServer
+@attribute [Authorize(Roles = "SuperAdmin,MunicipalityAdmin")]
+@using MEMS.Admin.Services
+@using MEMS.Data
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject ApplicationDbContext Db
+@inject TenantContextService TenantContext
+
+<PageTitle>Candidates</PageTitle>
+
+<div class="civic-hero mb-4 d-flex flex-wrap justify-content-between align-items-center gap-3">
+    <div>
+        <h1 class="h3 fw-bold mb-1">Registered Candidates</h1>
+        <p class="small mb-0 opacity-75">Review, update, and manage candidate profiles across your authorized
+            municipality.</p>
+        </div>
+        <a href="/admin/candidates/create" class="btn btn-warning fw-semibold text-dark px-3">
+            + Add Candidate
+        </a>
+    </div>
+
+    <div class="civic-card overflow-hidden">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0 civic-table">
+                <thead>
+                    <tr>
+                        <th class="ps-4">Candidate</th>
+                        <th>Position</th>
+                        <th>Municipality</th>
+                        <th class="text-end pe-4">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (!candidates.Any())
+                    {
+                        <tr>
+                            <td colspan="4" class="text-center text-muted py-5">
+                                No candidates found. Click <strong>+ Add Candidate</strong> to create one.
+                            </td>
+                        </tr>
+                    }
+                    else
+                    {
+                        @foreach (var cand in candidates)
+                        {
+                            <tr>
+                                <td class="ps-4">
+                                    <div class="d-flex align-items-center">
+                                        <div class="civic-monogram-sm me-3 position-relative overflow-hidden">
+                                            <span>@GetInitials(cand.Name)</span>
+                                            @if (!string.IsNullOrEmpty(cand.PhotoUrl))
+                                            {
+                                                <img src="@cand.PhotoUrl" alt="@cand.Name" onerror="this.style.display='none'"
+                                                     class="position-absolute top-0 start-0 w-100 h-100" style="object-fit: cover;" />
+                                            }
+                                        </div>
+                                        <div>
+                                            <div class="fw-bold text-dark">@cand.Name</div>
+                                            @if (!string.IsNullOrEmpty(cand.Email))
+                                            {
+                                                <div class="small text-muted">@cand.Email</div>
+                                            }
+                                        </div>
+                                    </div>
+                                </td>
+                                <td><span class="civic-badge-position">@cand.Position?.Name</span></td>
+                                <td class="fw-medium text-secondary">@cand.Municipality?.Name</td>
+                                <td class="text-end pe-4">
+                                    <button class="btn btn-sm btn-outline-secondary"
+                                            @onclick="() => selectedCandidate = cand">Details</button>
+                                    <a href="/admin/candidates/edit/@cand.CandidateId"
+                                       class="btn btn-sm btn-outline-primary ms-1">Edit</a>
+                                    <button class="btn btn-sm btn-outline-danger ms-1"
+                                            @onclick="() => DeleteAsync(cand)">Delete</button>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    @if (selectedCandidate is not null)
+    {
+        <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(15, 23, 42, 0.6);">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
+                    <div class="modal-header text-white" style="background-color: #0f294a;">
+                        <div class="d-flex align-items-center">
+                            <div class="civic-monogram-sm me-3 border border-light">
+                                @GetInitials(selectedCandidate.Name)
+                            </div>
+                            <div>
+                                <h5 class="modal-title fw-bold mb-0">@selectedCandidate.Name</h5>
+                                <small class="text-warning">@selectedCandidate.Position?.Name &bull;
+                                    @selectedCandidate.Municipality?.Name</small>
+                                </div>
+                            </div>
+                            <button type="button" class="btn-close btn-close-white"
+                                    @onclick="() => selectedCandidate = null"></button>
+                        </div>
+                        <div class="modal-body p-4">
+                            <h6 class="text-uppercase text-muted small fw-bold mb-2">Candidate Statement</h6>
+                            <p class="text-dark mb-4">
+                                @(string.IsNullOrWhiteSpace(selectedCandidate.Biography)
+                                    ? "No biography provided."
+                                    : selectedCandidate.Biography)
+                            </p>
+
+                            @if (!string.IsNullOrEmpty(selectedCandidate.Email) || !string.IsNullOrEmpty(selectedCandidate.Website))
+                            {
+                                <h6 class="text-uppercase text-muted small fw-bold mb-2">Contact &amp; Campaign Links</h6>
+                                <div class="bg-light rounded-3 p-3 border small">
+                                    @if (!string.IsNullOrEmpty(selectedCandidate.Email))
+                                    {
+                                        <div class="mb-1"><strong>Email:</strong> @selectedCandidate.Email</div>
+                                    }
+                                    @if (!string.IsNullOrEmpty(selectedCandidate.Website))
+                                    {
+                                        <div>
+                                            <strong>Website:</strong>
+                                            <a href="@selectedCandidate.Website" target="_blank"
+                                               rel="noopener">@selectedCandidate.Website</a>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                        <div class="modal-footer bg-light">
+                            <button class="btn btn-secondary" @onclick="() => selectedCandidate = null">Close</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+
+@code {
+    private List<Candidate> candidates = [];
+    private Candidate? selectedCandidate;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        var (isSuper, muniId) = await TenantContext.GetCurrentTenantAsync();
+        var query = Db.Candidates
+            .Include(c => c.Position)
+            .Include(c => c.Municipality)
+            .AsQueryable();
+
+        if (!isSuper && muniId.HasValue)
+            query = query.Where(c => c.MunicipalityId == muniId.Value);
+
+        candidates = await query.OrderBy(c => c.Name).ToListAsync();
+    }
+
+    private async Task DeleteAsync(Candidate cand)
+    {
+        var (isSuper, muniId) = await TenantContext.GetCurrentTenantAsync();
+        if (!isSuper && cand.MunicipalityId != muniId) return;
+
+        Db.Candidates.Remove(cand);
+        await Db.SaveChangesAsync();
+        await LoadAsync();
+    }
+
+    private static string GetInitials(string? fullName)
+    {
+        if (string.IsNullOrWhiteSpace(fullName)) return "?";
+        var parts = fullName.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length == 1
+            ? parts[0][..1].ToUpperInvariant()
+            : $"{parts[0][0]}{parts[^1][0]}".ToUpperInvariant();
+    }
+}

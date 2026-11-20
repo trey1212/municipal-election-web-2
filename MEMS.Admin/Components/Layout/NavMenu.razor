@@ -1,6 +1,10 @@
-﻿<div class="top-row ps-3 navbar navbar-dark">
+﻿@using Microsoft.AspNetCore.Components.Authorization
+
+<div class="top-row ps-3 navbar navbar-dark">
     <div class="container-fluid">
-        <a class="navbar-brand" href="">MEMS.Admin</a>
+        <a class="navbar-brand fw-bold d-flex align-items-center gap-2" href="/admin">
+            <span>BBB Admin</span>
+        </a>
     </div>
 </div>
 
@@ -8,23 +12,32 @@
 
 <div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()">
     <nav class="nav flex-column">
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
-                <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span> Home
-            </NavLink>
-        </div>
+        <AuthorizeView Roles="SuperAdmin,MunicipalityAdmin">
+            <Authorized>
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="/admin" Match="NavLinkMatch.All">Dashboard</NavLink>
+                </div>
 
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="counter">
-                <span class="bi bi-plus-square-fill-nav-menu" aria-hidden="true"></span> Counter
-            </NavLink>
-        </div>
+                <AuthorizeView Roles="SuperAdmin" Context="superContext">
+                    <div class="nav-item px-3">
+                        <NavLink class="nav-link" href="/admin/municipalities">Municipalities</NavLink>
+                    </div>
+                </AuthorizeView>
 
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="weather">
-                <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Weather
-            </NavLink>
-        </div>
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="/admin/positions">Positions</NavLink>
+                </div>
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="/admin/candidates">Candidates</NavLink>
+                </div>
+                <div class="nav-item px-3 mt-3 pt-3 border-top border-secondary">
+                    <form method="post" action="/auth/logout">
+                        <button type="submit" class="btn btn-outline-warning btn-sm w-100 fw-semibold">
+                            Sign Out
+                        </button>
+                    </form>
+                </div>
+            </Authorized>
+        </AuthorizeView>
     </nav>
 </div>
-

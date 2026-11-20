@@ -1,0 +1,161 @@
+@page "/admin/municipalities"
+@rendermode InteractiveServer
+@attribute [Authorize(Roles = "SuperAdmin")]
+@using MEMS.Data
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject ApplicationDbContext Db
+
+<PageTitle>Municipalities</PageTitle>
+
+<div class="civic-hero mb-4 d-flex flex-wrap justify-content-between align-items-center gap-3">
+    <div>
+        <h1 class="h3 fw-bold mb-1">Municipalities</h1>
+        <p class="small mb-0 opacity-75">Configure participating municipalities, election dates, and tenant URL slugs.
+        </p>
+    </div>
+    <a href="/admin/municipalities/create" class="btn btn-warning fw-semibold text-dark px-3">
+        + Create Municipality
+    </a>
+</div>
+
+@if (!string.IsNullOrEmpty(errorMessage))
+{
+    <div class="alert alert-danger shadow-sm">@errorMessage</div>
+}
+
+<div class="civic-card overflow-hidden">
+    <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0 civic-table">
+            <thead>
+                <tr>
+                    <th class="ps-4">Municipality</th>
+                    <th>Tenant Slug</th>
+                    <th>Province</th>
+                    <th>Election Date</th>
+                    <th class="text-end pe-4">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (!municipalities.Any())
+                {
+                    <tr>
+                        <td colspan="5" class="text-center text-muted py-5">
+                            No municipalities found. Click <strong>+ Create Municipality</strong> to add one.
+                        </td>
+                    </tr>
+                }
+                else
+                {
+                    @foreach (var muni in municipalities)
+                    {
+                        <tr>
+                            <td class="ps-4">
+                                <div class="d-flex align-items-center">
+                                    <div class="civic-monogram-sm me-3 position-relative overflow-hidden">
+                                        <span>@GetInitials(muni.Name)</span>
+                                        @if (!string.IsNullOrEmpty(muni.LogoUrl))
+                                        {
+                                            <img src="@muni.LogoUrl" alt="@muni.Name logo" onerror="this.style.display='none'"
+                                                 class="position-absolute top-0 start-0 w-100 h-100 bg-white"
+                                                 style="object-fit: cover;" />
+                                        }
+                                    </div>
+                                    <div class="fw-bold text-dark">@muni.Name</div>
+                                </div>
+                            </td>
+                            <td><code class="bg-light border rounded px-2 py-1 text-primary">/@muni.Slug</code></td>
+                            <td><span class="badge text-bg-light border text-secondary">@muni.Province</span></td>
+                            <td class="fw-medium text-secondary">@muni.ElectionDate.ToString("MMMM d, yyyy")</td>
+                            <td class="text-end pe-4">
+                                <button class="btn btn-sm btn-outline-secondary"
+                                        @onclick="() => selectedMunicipality = muni">Details</button>
+                                <a href="/admin/municipalities/edit/@muni.MunicipalityId"
+                                   class="btn btn-sm btn-outline-primary ms-1">Edit</a>
+                                <button class="btn btn-sm btn-outline-danger ms-1"
+                                        @onclick="() => DeleteAsync(muni)">Delete</button>
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@if (selectedMunicipality is not null)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(15, 23, 42, 0.6);">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0 shadow-lg rounded-4 overflow-hidden">
+                <div class="modal-header text-white" style="background-color: #0f294a;">
+                    <div class="d-flex align-items-center">
+                        <div class="civic-monogram-sm me-3 border border-light">
+                            @GetInitials(selectedMunicipality.Name)
+                        </div>
+                        <div>
+                            <h5 class="modal-title fw-bold mb-0">@selectedMunicipality.Name</h5>
+                            <small class="text-warning">@selectedMunicipality.Province &bull;
+                                /@selectedMunicipality.Slug</small>
+                            </div>
+                        </div>
+                        <button type="button" class="btn-close btn-close-white"
+                                @onclick="() => selectedMunicipality = null"></button>
+                    </div>
+                    <div class="modal-body p-4">
+                        <div class="bg-light rounded-3 p-3 border small mb-3">
+                            <div class="mb-1"><strong>Tenant Route:</strong> <code>/@selectedMunicipality.Slug</code></div>
+                            <div><strong>Election Date:</strong> @selectedMunicipality.ElectionDate.ToString("MMMM d, yyyy")
+                            </div>
+                        </div>
+                        <h6 class="text-uppercase text-muted small fw-bold mb-2">Description</h6>
+                        <p class="text-dark mb-0">
+                            @(string.IsNullOrWhiteSpace(selectedMunicipality.Description)
+                                ? "No description provided."
+                                : selectedMunicipality.Description)
+                        </p>
+                    </div>
+                    <div class="modal-footer bg-light">
+                        <button class="btn btn-secondary" @onclick="() => selectedMunicipality = null">Close</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+@code {
+    private List<Municipality> municipalities = [];
+    private Municipality? selectedMunicipality;
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        municipalities = await Db.Municipalities.OrderBy(m => m.Name).ToListAsync();
+    }
+
+    private async Task DeleteAsync(Municipality muni)
+    {
+        errorMessage = null;
+        try
+        {
+            Db.Municipalities.Remove(muni);
+            await Db.SaveChangesAsync();
+            await LoadAsync();
+        }
+        catch (DbUpdateException)
+        {
+            errorMessage = $"Cannot delete {muni.Name} while positions or candidates are still assigned to it.";
+        }
+    }
+
+    private static string GetInitials(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "?";
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length == 1
+            ? parts[0][..Math.Min(2, parts[0].Length)].ToUpperInvariant()
+            : $"{parts[0][0]}{parts[^1][0]}".ToUpperInvariant();
+    }
+}

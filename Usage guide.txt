@@ -1,0 +1,17 @@
+MEMS ADMIN LOGIN & ROLES
+========================
+
+Login Page: /login (MEMS.Admin)
+Password for all admins: P@$$w0rd
+
+1. SuperAdmin
+- Username: Super
+- Role Capabilities: Full system-wide access across all municipalities. Can view overall dashboard metrics, create/edit/delete municipalities, and manage positions and candidates for any tenant.
+
+2. MunicipalityAdmin (Burnaby example)
+- Username: Burnabyadmin
+- Role Capabilities: Scoped to Burnaby via MunicipalityId claim. Can view Burnaby dashboard counts and manage positions and candidates only within Burnaby (municipality field is locked). Cannot access municipality management or other tenants' records.
+
+3. MunicipalityAdmin (Auto-Provisioned for New Municipalities)
+- Username Format: <slug>admin (for example, surreyadmin for slug "surrey")
+- Role Capabilities: Automatically created when a new municipality is added, assigned the MunicipalityAdmin role and a MunicipalityId claim scoped to that new municipality.

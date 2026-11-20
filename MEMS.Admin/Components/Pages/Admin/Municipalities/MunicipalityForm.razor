@@ -1,0 +1,234 @@
+@page "/admin/municipalities/create"
+@page "/admin/municipalities/edit/{Id:int}"
+@rendermode InteractiveServer
+@attribute [Authorize(Roles = "SuperAdmin")]
+@using System.ComponentModel.DataAnnotations
+@using System.Security.Claims
+@using MEMS.Admin.Services
+@using MEMS.Data
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.EntityFrameworkCore
+@inject ApplicationDbContext Db
+@inject UserManager<MunicipalUser> UserManager
+@inject ImageUploadService ImageUpload
+@inject NavigationManager Nav
+
+<PageTitle>@(IsEdit ? "Edit Municipality" : "Create Municipality")</PageTitle>
+
+<div class="mb-3">
+    <a href="/admin/municipalities" class="btn btn-sm btn-outline-secondary">&larr; Back to Municipalities</a>
+</div>
+
+<div class="civic-card overflow-hidden" style="max-width: 760px;">
+    <div class="p-4 text-white" style="background: linear-gradient(135deg, #0f294a 0%, #1d4ed8 100%);">
+        <div class="small text-uppercase fw-semibold text-warning mb-1">Tenant Configuration</div>
+        <h3 class="h4 fw-bold mb-0">@(IsEdit ? "Edit Municipality" : "Create New Municipality")</h3>
+    </div>
+
+    <div class="p-4">
+        @if (!string.IsNullOrEmpty(errorMessage))
+        {
+            <div class="alert alert-danger">@errorMessage</div>
+        }
+
+        @if (!IsEdit)
+        {
+            <div class="alert alert-info small py-2 mb-4">
+                Creating a municipality automatically provisions a scoped administrator account
+                (<code>&lt;slug&gt;admin</code>).
+            </div>
+        }
+
+        <EditForm Model="Model" OnValidSubmit="HandleSubmitAsync">
+            <DataAnnotationsValidator />
+            <ValidationSummary class="text-danger small" />
+
+            <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                    <label class="form-label fw-semibold">Municipality Name</label>
+                    <InputText @bind-Value="Model.Name" class="form-control" placeholder="e.g., Burnaby" />
+                    <ValidationMessage For="() => Model.Name" class="text-danger small" />
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label fw-semibold">Tenant URL Slug</label>
+                    <InputText @bind-Value="Model.Slug" class="form-control" placeholder="e.g., burnaby" />
+                    <ValidationMessage For="() => Model.Slug" class="text-danger small" />
+                </div>
+            </div>
+
+            <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                    <label class="form-label fw-semibold">Province</label>
+                    <InputText @bind-Value="Model.Province" class="form-control" placeholder="e.g., British Columbia" />
+                    <ValidationMessage For="() => Model.Province" class="text-danger small" />
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label fw-semibold">Election Date</label>
+                    <InputDate @bind-Value="Model.ElectionDate" class="form-control" />
+                    <ValidationMessage For="() => Model.ElectionDate" class="text-danger small" />
+                </div>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label fw-semibold">Description</label>
+                <InputTextArea @bind-Value="Model.Description" class="form-control" rows="4" />
+                <ValidationMessage For="() => Model.Description" class="text-danger small" />
+            </div>
+
+            <div class="mb-4">
+                <label class="form-label fw-semibold">
+                    Municipality Logo <span class="text-muted fw-normal">@(IsEdit ? "(Optional)" : "(Required)")</span>
+                </label>
+                @if (!string.IsNullOrEmpty(existingLogoUrl))
+                {
+                    <div class="mb-2">
+                        <img src="@existingLogoUrl" alt="Current Logo" onerror="this.style.display='none'"
+                             style="height: 80px; width: 80px; object-fit: cover;" class="img-thumbnail rounded" />
+                    </div>
+                }
+                <InputFile OnChange="HandleFileSelected" class="form-control" accept=".jpg,.jpeg,.png,.webp" />
+            </div>
+
+            <div class="pt-3 border-top d-flex gap-2">
+                <button type="submit" class="btn btn-civic-primary px-4">Save Municipality</button>
+                <a href="/admin/municipalities" class="btn btn-outline-secondary">Cancel</a>
+            </div>
+        </EditForm>
+    </div>
+</div>
+
+@code {
+    [Parameter] public int? Id { get; set; }
+    private bool IsEdit => Id.HasValue;
+
+    private MunicipalityInput Model { get; set; } = new() { ElectionDate = DateTime.Today };
+    private IBrowserFile? selectedLogo;
+    private string? existingLogoUrl;
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (IsEdit)
+        {
+            var muni = await Db.Municipalities.FindAsync(Id!.Value);
+            if (muni is null)
+            {
+                Nav.NavigateTo("/admin/municipalities");
+                return;
+            }
+
+            Model = new MunicipalityInput
+            {
+                Name = muni.Name,
+                Slug = muni.Slug,
+                Province = muni.Province,
+                ElectionDate = muni.ElectionDate,
+                Description = muni.Description ?? string.Empty
+            };
+            existingLogoUrl = muni.LogoUrl;
+        }
+    }
+
+    private void HandleFileSelected(InputFileChangeEventArgs e) => selectedLogo = e.File;
+
+    private async Task HandleSubmitAsync()
+    {
+        errorMessage = null;
+        var normalizedSlug = Model.Slug.Trim().ToLowerInvariant();
+
+        var slugTaken = await Db.Municipalities.AnyAsync(m =>
+            m.Slug == normalizedSlug && (!IsEdit || m.MunicipalityId != Id!.Value));
+
+        if (slugTaken)
+        {
+            errorMessage = $"The tenant slug '{normalizedSlug}' is already in use.";
+            return;
+        }
+
+        if (!IsEdit && selectedLogo is null)
+        {
+            errorMessage = "Please select a logo image to upload.";
+            return;
+        }
+
+        try
+        {
+            string? uploadedPath = null;
+            if (selectedLogo is not null)
+                uploadedPath = await ImageUpload.SaveImageAsync(selectedLogo, "municipalities");
+
+            if (!IsEdit)
+            {
+                var municipality = new Municipality
+                {
+                    Name = Model.Name.Trim(),
+                    Slug = normalizedSlug,
+                    Province = Model.Province.Trim(),
+                    ElectionDate = Model.ElectionDate,
+                    Description = Model.Description,
+                    LogoUrl = uploadedPath
+                };
+
+                Db.Municipalities.Add(municipality);
+                await Db.SaveChangesAsync();
+
+                var adminUsername = $"{normalizedSlug}admin";
+                var user = new MunicipalUser
+                {
+                    UserName = adminUsername,
+                    Email = $"{adminUsername}@mems.local",
+                    MunicipalityId = municipality.MunicipalityId
+                }; var result = await
+UserManager.CreateAsync(user, "P@$$w0rd");
+                if (result.Succeeded)
+                {
+                    await UserManager.AddToRoleAsync(user, "MunicipalityAdmin");
+                    await UserManager.AddClaimAsync(user, new Claim("MunicipalityId", municipality.MunicipalityId.ToString()));
+                }
+            }
+            else
+            {
+                var muni = await Db.Municipalities.FindAsync(Id!.Value);
+                if (muni is null) return;
+
+                muni.Name = Model.Name.Trim();
+                muni.Slug = normalizedSlug;
+                muni.Province = Model.Province.Trim();
+                muni.ElectionDate = Model.ElectionDate;
+                muni.Description = Model.Description;
+                if (uploadedPath is not null)
+                    muni.LogoUrl = uploadedPath;
+
+                await Db.SaveChangesAsync();
+            }
+
+            Nav.NavigateTo("/admin/municipalities");
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+    }
+
+    public class MunicipalityInput
+    {
+        [Required, StringLength(100, MinimumLength = 2)]
+        public string Name { get; set; } = string.Empty;
+
+        [Required, StringLength(50, MinimumLength = 2)]
+        [RegularExpression("^[a-z0-9-]+$", ErrorMessage = "Slug may only contain lowercase letters, numbers, and hyphens.")]
+        public string Slug { get; set; } = string.Empty;
+
+        [Required, StringLength(100, MinimumLength = 2)]
+        public string Province { get; set; } = string.Empty;
+
+        [Required]
+        public DateTime ElectionDate { get; set; }
+
+        [MaxLength(300)]
+        public string Description { get; set; } = string.Empty;
+    }
+}
