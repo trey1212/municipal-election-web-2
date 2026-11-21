@@ -13,6 +13,24 @@ using Google.Apis.Auth.OAuth2;
 
 var builder = WebApplication.CreateBuilder(args);
 
+var settingAliases = new (string ConfigKey, string Alias)[]
+{
+    ("Jwt:SecretKey", "Jwt_SecretKey"),
+    ("Jwt:Issuer", "Jwt_Issuer"),
+    ("Jwt:Audience", "Jwt_Audience"),
+    ("Firebase:ServiceAccountJson", "Firebase_ServiceAccountJson")
+};
+
+foreach (var (configKey, alias) in settingAliases)
+{
+    if (string.IsNullOrWhiteSpace(builder.Configuration[configKey]) &&
+        builder.Configuration[alias] is { } value &&
+        !string.IsNullOrWhiteSpace(value))
+    {
+        builder.Configuration[configKey] = value;
+    }
+}
+
 var jwtSecret = builder.Configuration["Jwt:SecretKey"]
     ?? throw new InvalidOperationException("Missing Jwt:SecretKey.");
 var jwtIssuer = builder.Configuration["Jwt:Issuer"]
@@ -78,6 +96,7 @@ builder.Services.AddSingleton<FirebaseAuth>(services =>
 });
 
 var app = builder.Build();
+
 
 app.MapDefaultEndpoints();
 
