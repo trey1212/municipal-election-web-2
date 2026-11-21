@@ -4,8 +4,37 @@ using MEMS.Data;
 using MEMS.Data.Models;
 using Microsoft.Extensions.Hosting;
 using Scalar.AspNetCore;
+using System.Text;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
+using FirebaseAdmin;
+using FirebaseAdmin.Auth;
+using Google.Apis.Auth.OAuth2;
 
 var builder = WebApplication.CreateBuilder(args);
+
+var jwtSecret = builder.Configuration["Jwt:SecretKey"]
+    ?? throw new InvalidOperationException("Missing Jwt:SecretKey.");
+var jwtIssuer = builder.Configuration["Jwt:Issuer"]
+    ?? throw new InvalidOperationException("Missing Jwt:Issuer.");
+var jwtAudience = builder.Configuration["Jwt:Audience"]
+    ?? throw new InvalidOperationException("Missing Jwt:Audience.");
+
+builder.Services.AddAuthentication()
+    .AddJwtBearer(JwtBearerDefaults.AuthenticationScheme, options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidIssuer = jwtIssuer,
+            ValidateAudience = true,
+            ValidAudience = jwtAudience,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = new SymmetricSecurityKey(
+                Encoding.UTF8.GetBytes(jwtSecret))
+        };
+    });
 
 builder.AddServiceDefaults();
 
@@ -27,6 +56,25 @@ builder.Services.AddCors(options =>
         policy.AllowAnyOrigin()
               .AllowAnyMethod()
               .AllowAnyHeader());
+});
+
+builder.Services.AddSingleton<FirebaseAuth>(services =>
+{
+    var configuration = services.GetRequiredService<IConfiguration>();
+    var credentialJson = configuration["Firebase:ServiceAccountJson"]
+        ?? throw new InvalidOperationException(
+            "Missing Firebase:ServiceAccountJson.");
+
+    var credential = CredentialFactory
+        .FromJson<ServiceAccountCredential>(credentialJson)
+        .ToGoogleCredential();
+
+    var firebaseApp = FirebaseApp.Create(new AppOptions
+    {
+        Credential = credential
+    });
+
+    return FirebaseAuth.GetAuth(firebaseApp);
 });
 
 var app = builder.Build();
